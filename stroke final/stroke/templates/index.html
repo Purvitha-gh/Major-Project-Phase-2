@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StrokeShield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        // Configure Tailwind to use the 'dark' class
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <script>
+        // Set theme on initial load
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex flex-col text-gray-800 dark:text-gray-200 font-poppins transition-colors duration-300">
+    <!-- Header -->
+    <header id="header" class="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm sticky top-0 z-20 transition-shadow duration-300">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-blue-600 dark:text-blue-500 tracking-tight">StrokeShield</h1>
+            <button id="theme-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5">
+                <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1-0 100 2h1zm-7 4a1 1 0 011 1v1a1 1-0 11-2 0v-1a1 1-0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1-0 100 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-4 sm:p-6 lg:p-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+            <!-- Left Column: Info & Result -->
+            <div id="info-column" class="space-y-6 lg:pt-8 sticky top-24">
+                <h2 class="text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">Proactive Stroke Risk Assessment</h2>
+                <p class="text-lg text-gray-600 dark:text-gray-300">
+                    Utilize our predictive model to understand your potential risk for a stroke. Fill in the form with your health details to receive an instant assessment. This tool is for informational purposes and is not a substitute for professional medical advice.
+                </p>
+                <!-- Result will be injected here by JavaScript -->
+                <div id="result-placeholder"></div>
+                {% if prediction %}
+                <div id="result-container" class="result mt-6 p-6 text-center rounded-xl animate-fadeIn bg-white shadow-lg border border-gray-200">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">Assessment Result</h3>
+                    <p class="text-2xl font-bold {{ 'text-red-600' if 'High' in prediction else 'text-green-600' }}">
+                        {{ prediction }}
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Right Column: Form -->
+            <div class="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <!-- Loading Overlay -->
+                <div id="loadingOverlay" class="hidden absolute inset-0 bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm z-10 flex justify-center items-center rounded-2xl">
+                    <div class="spinner-large rounded-full" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+
+                <h2 class="text-2xl font-semibold text-center mb-6 text-gray-800 dark:text-gray-100">Enter Your Details</h2>
+
+                <form method="POST" id="predictionForm">
+                    <fieldset>
+                        <legend>Personal Details</legend>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                            <div class="sm:col-span-2">
+                                <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name (For Report)</label>
+                                <input type="text" id="name" name="name" placeholder="e.g., Jane Doe" class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="age" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Age</label>
+                                <input type="number" id="age" name="age" step="1" min="1" max="125" required value="58" class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <input type="range" id="age-slider" min="1" max="125" value="58" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 mt-2 range-slider">
+                            </div>
+                            <div>
+                                <label for="gender" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Gender</label>
+                                <select id="gender" name="gender" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option>Male</option>
+                                    <option>Female</option>
+                                    <option>Other</option>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="ever_married" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Ever Married</label>
+                                <select id="ever_married" name="ever_married" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option>Yes</option>
+                                    <option>No</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Health Metrics</legend>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <label for="bmi" class="block text-sm font-medium text-gray-700 dark:text-gray-300">BMI</label>
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" id="openBmiModal" class="text-xs font-semibold text-blue-600 dark:text-blue-500 hover:text-blue-800 dark:hover:text-blue-400">Calculate</button>
+                                        <div class="relative group">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-gray-400 dark:text-gray-500 cursor-pointer">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                                            </svg>
+                                            <span class="tooltip-text absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-56 rounded-md bg-gray-800 p-2 text-xs font-normal text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg dark:bg-gray-900 dark:border dark:border-gray-600">Body Mass Index, a measure of body fat based on height and weight.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <input type="number" id="bmi" name="bmi" step="0.1" min="10" max="100" required value="28.5" class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <input type="range" id="bmi-slider" min="10" max="100" value="28.5" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 mt-2 range-slider">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <label for="avg_glucose_level" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Avg. Glucose Level</label>
+                                    <div class="relative group">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-gray-400 dark:text-gray-500 cursor-pointer">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                                        </svg>
+                                        <span class="tooltip-text absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-56 rounded-md bg-gray-800 p-2 text-xs font-normal text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg dark:bg-gray-900 dark:border dark:border-gray-600">Your average blood glucose level, typically measured in mg/dL.</span>
+                                    </div>
+                                </div>
+                                <input type="number" id="avg_glucose_level" name="avg_glucose_level" step="0.01" min="40" max="300" required value="105.32" class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <input type="range" id="avg_glucose_level-slider" min="40" max="300" value="105.32" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 mt-2 range-slider">
+                            </div>
+                            <div>
+                                <label for="hypertension" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Hypertension (High BP)</label>
+                                <select id="hypertension" name="hypertension" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="heart_disease" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Heart Disease</label>
+                                <select id="heart_disease" name="heart_disease" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Lifestyle Factors</legend>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                            <div class="sm:col-span-2">
+                                <label for="work_type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Work Type</label>
+                                <select id="work_type" name="work_type" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option>Private</option>
+                                    <option>Self-employed</option>
+                                    <option value="Govt_job">Govt Job</option>
+                                    <option>Children</option>
+                                    <option value="Never worked">Never Worked</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="residence_type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Residence Type</label>
+                                <select id="residence_type" name="residence_type" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option>Urban</option>
+                                    <option>Rural</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="smoking_status" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Smoking Status</label>
+                                <select id="smoking_status" name="smoking_status" required class="form-input mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    <option value="never smoked">Never Smoked</option>
+                                    <option value="formerly smoked">Formerly Smoked</option>
+                                    <option>Smokes</option>
+                                    <option>Unknown</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Submit -->
+                    <div class="mt-8 flex flex-col-reverse sm:flex-row gap-3">
+                        <button type="reset" class="w-full sm:w-auto justify-center items-center py-3 px-6 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-base font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-150 transform hover:scale-105">
+                            Clear
+                        </button>
+                        <button type="submit" class="w-full flex justify-center items-center py-3 px-6 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-150 transform hover:scale-105">
+                            Get Prediction
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- Chatbot -->
+    <div id="chatbot-container" class="fixed bottom-5 right-5 z-30">
+        <!-- Chat Window -->
+        <div id="chatbot-window" class="hidden w-80 h-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col transform transition-all duration-300 origin-bottom-right opacity-0 -translate-y-4">
+            <div class="p-4 bg-blue-600 dark:bg-blue-500 text-white rounded-t-2xl flex justify-between items-center">
+                <h3 class="font-semibold">Health Assistant</h3>
+                <button id="close-chatbot" class="text-white">&times;</button>
+            </div>
+            <div id="chatbot-messages" class="flex-1 p-4 overflow-y-auto">
+                <!-- Messages will be injected here -->
+            </div>
+            <form id="chatbot-form" class="p-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="relative">
+                    <input type="text" id="chatbot-input" placeholder="Ask a question..." class="form-input w-full pr-10 dark:bg-gray-700 dark:border-gray-600" autocomplete="off">
+                    <button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+        <!-- Chat Bubble -->
+        <button id="chatbot-bubble" class="bg-blue-600 dark:bg-blue-500 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center focus:outline-none transform hover:scale-110 transition-transform">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+        </button>
+    </div>
+
+    <!-- BMI Calculator Modal -->
+    <div id="bmiModal" class="fixed inset-0 bg-gray-900/50 dark:bg-black/50 backdrop-blur-sm z-40 hidden items-center justify-center p-4">
+        <div id="bmiModalContent" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-md transform transition-all opacity-0 -translate-y-4">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800 dark:text-gray-100">BMI Calculator</h3>
+                <button id="closeBmiModal" class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+            </div>
+            
+            <!-- Unit Toggle -->
+            <div class="mb-4 flex justify-center p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <button id="bmiMetricBtn" class="w-1/2 py-2 text-sm font-medium rounded-md bg-white dark:bg-gray-600 text-blue-600 dark:text-white shadow">Metric (kg, cm)</button>
+                <button id="bmiImperialBtn" class="w-1/2 py-2 text-sm font-medium rounded-md text-gray-600 dark:text-gray-300">Imperial (lbs, ft, in)</button>
+            </div>
+
+            <!-- Metric Inputs -->
+            <div id="metricInputs" class="space-y-4">
+                <div>
+                    <label for="weight_kg" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Weight (kg)</label>
+                    <input type="number" id="weight_kg" placeholder="e.g., 70" class="form-input mt-1 block w-full dark:bg-gray-700 dark:border-gray-600">
+                </div>
+                <div>
+                    <label for="height_cm" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Height (cm)</label>
+                    <input type="number" id="height_cm" placeholder="e.g., 175" class="form-input mt-1 block w-full dark:bg-gray-700 dark:border-gray-600">
+                </div>
+            </div>
+
+            <!-- Imperial Inputs -->
+            <div id="imperialInputs" class="hidden space-y-4">
+                <div>
+                    <label for="weight_lbs" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Weight (lbs)</label>
+                    <input type="number" id="weight_lbs" placeholder="e.g., 155" class="form-input mt-1 block w-full dark:bg-gray-700 dark:border-gray-600">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="height_ft" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Height (ft)</label>
+                        <input type="number" id="height_ft" placeholder="e.g., 5" class="form-input mt-1 block w-full dark:bg-gray-700 dark:border-gray-600">
+                    </div>
+                    <div>
+                        <label for="height_in" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Height (in)</label>
+                        <input type="number" id="height_in" placeholder="e.g., 9" class="form-input mt-1 block w-full dark:bg-gray-700 dark:border-gray-600">
+                    </div>
+                </div>
+            </div>
+
+            <button id="calculateBmiBtn" class="mt-6 w-full flex justify-center items-center py-3 px-6 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Calculate and Use BMI</button>
+        </div>
+    </div>
+
+    <!-- Generic Info Modal -->
+    <div id="infoModal" class="fixed inset-0 bg-gray-900/50 dark:bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div id="infoModalContent" class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 w-full max-w-lg transform transition-all opacity-0 -translate-y-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="infoModalTitle" class="text-xl font-bold text-gray-800 dark:text-gray-100"></h3>
+                <button id="closeInfoModal" class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+            </div>
+            <div id="infoModalBody" class="text-gray-600 dark:text-gray-300 space-y-4">
+                <!-- Content will be injected here -->
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-gray-800 mt-12">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-gray-500 dark:text-gray-400">
+            <p class="text-xs mb-2"><strong>Disclaimer:</strong> This tool is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition.</p>
+            <p>&copy; 2025 StrokeShield. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // --- Dynamic Header Shadow on Scroll ---
+        const header = document.getElementById('header');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 10) {
+                header.classList.add('header-scrolled');
+            } else {
+                header.classList.remove('header-scrolled');
+            }
+        });
+
+        // --- Theme Toggle Logic ---
+        const themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
+        const themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
+        const themeToggleButton = document.getElementById('theme-toggle');
+
+        // Function to set the icon state
+        const setIconState = () => {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                themeToggleLightIcon.classList.remove('hidden');
+                themeToggleDarkIcon.classList.add('hidden');
+            } else {
+                themeToggleDarkIcon.classList.remove('hidden');
+                themeToggleLightIcon.classList.add('hidden');
+            }
+        };
+
+        setIconState(); // Set on initial load
+
+        themeToggleButton.addEventListener('click', function() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+            setIconState();
+        });
+
+        // --- Chatbot Logic ---
+        const chatbotBubble = document.getElementById('chatbot-bubble');
+        const chatbotWindow = document.getElementById('chatbot-window');
+        const closeChatbotBtn = document.getElementById('close-chatbot');
+        const chatbotForm = document.getElementById('chatbot-form');
+        const chatbotInput = document.getElementById('chatbot-input');
+        const chatbotMessages = document.getElementById('chatbot-messages');
+
+        const toggleChatbot = (show) => {
+            if (show) {
+                chatbotWindow.classList.remove('hidden');
+                setTimeout(() => {
+                    chatbotWindow.classList.remove('opacity-0', '-translate-y-4');
+                    chatbotBubble.classList.add('opacity-0', 'scale-0');
+                }, 10);
+            } else {
+                chatbotWindow.classList.add('opacity-0', '-translate-y-4');
+                chatbotBubble.classList.remove('opacity-0', 'scale-0');
+                setTimeout(() => chatbotWindow.classList.add('hidden'), 300);
+            }
+        };
+
+        const addMessage = (text, sender) => {
+            const messageEl = document.createElement('div');
+            const bubbleClasses = sender === 'bot' 
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 self-start' 
+                : 'bg-blue-500 text-white self-end';
+            messageEl.className = `p-3 rounded-2xl mb-2 max-w-xs text-sm ${bubbleClasses}`;
+            messageEl.innerHTML = text; // Use innerHTML to render links
+            chatbotMessages.appendChild(messageEl);
+            chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+        };
+
+        const getBotResponse = (userInput) => {
+            const input = userInput.toLowerCase();
+            if (input.includes('hello') || input.includes('hi')) {
+                return 'Hello! How can I help you today? You can ask me about BMI, hypertension, or stroke risk factors.';
+            }
+            if (input.includes('bmi')) {
+                return 'Body Mass Index (BMI) is a measure of body fat based on your height and weight. You can use the "Calculate" button on the form to find yours.';
+            }
+            if (input.includes('hypertension') || input.includes('blood pressure')) {
+                return 'Hypertension, or high blood pressure, is a condition where the force of the blood against your artery walls is too high, which can lead to health problems like heart disease and stroke.';
+            }
+            if (input.includes('risk') || input.includes('factors')) {
+                return 'Key risk factors for stroke include high blood pressure, high cholesterol, smoking, diabetes, and obesity. This app helps assess some of these factors.';
+            }
+            if (input.includes('app') || input.includes('purpose')) {
+                return 'This is StrokeShield, a tool to provide an informational assessment of stroke risk based on your health data. It is not a substitute for professional medical advice.';
+            }
+            if (input.includes('high risk')) {
+                return 'A "High Risk" result suggests you should consult a healthcare professional for a comprehensive evaluation. They can provide guidance on managing your health.';
+            }
+            return "I'm sorry, I don't understand that question. You can ask me about BMI, hypertension, or risk factors.";
+        };
+
+        chatbotForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const userInput = chatbotInput.value.trim();
+            if (!userInput) return;
+
+            addMessage(userInput, 'user');
+            chatbotInput.value = '';
+
+            // Show typing indicator
+            const typingEl = document.createElement('div');
+            typingEl.id = 'typing-indicator';
+            typingEl.className = 'p-3 rounded-2xl mb-2 max-w-xs text-sm bg-gray-200 dark:bg-gray-700 text-gray-500 self-start';
+            typingEl.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+            chatbotMessages.appendChild(typingEl);
+            chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+            setTimeout(() => {
+                chatbotMessages.removeChild(typingEl);
+                const botResponse = getBotResponse(userInput);
+                addMessage(botResponse, 'bot');
+            }, 1200);
+        });
+
+        chatbotBubble.addEventListener('click', () => toggleChatbot(true));
+        closeChatbotBtn.addEventListener('click', () => toggleChatbot(false));
+
+        // --- Chart Logic ---
+        let riskChartInstance = null;
+
+        // --- PDF Generation Logic ---
+        window.jsPDF = window.jspdf.jsPDF;
+
+        // Initial bot message
+        setTimeout(() => addMessage("Hi! I'm the StrokeShield Health Assistant. Ask me a question to get started!", 'bot'), 500);
+
+        // --- Slider Sync Logic ---
+        function syncSliderAndInput(sliderId, inputId) {
+            const slider = document.getElementById(sliderId);
+            const input = document.getElementById(inputId);
+
+            slider.addEventListener('input', (e) => {
+                input.value = e.target.value;
+            });
+            input.addEventListener('input', (e) => {
+                slider.value = e.target.value;
+            });
+        }
+        syncSliderAndInput('age-slider', 'age');
+        syncSliderAndInput('bmi-slider', 'bmi');
+        syncSliderAndInput('avg_glucose_level-slider', 'avg_glucose_level');
+
+        // --- BMI Calculator Modal Logic ---
+        const bmiModal = document.getElementById('bmiModal');
+        const bmiModalContent = document.getElementById('bmiModalContent');
+        const openBmiModalBtn = document.getElementById('openBmiModal');
+        const closeBmiModalBtn = document.getElementById('closeBmiModal');
+        const calculateBmiBtn = document.getElementById('calculateBmiBtn');
+        const bmiInput = document.getElementById('bmi');
+
+        const bmiMetricBtn = document.getElementById('bmiMetricBtn');
+        const bmiImperialBtn = document.getElementById('bmiImperialBtn');
+        const metricInputs = document.getElementById('metricInputs');
+        const imperialInputs = document.getElementById('imperialInputs');
+
+        let isMetric = true;
+
+        // Toggle between metric and imperial
+        bmiMetricBtn.addEventListener('click', () => {
+            isMetric = true;
+            metricInputs.style.display = 'block';
+            imperialInputs.style.display = 'none';
+            bmiMetricBtn.classList.add('bg-white', 'dark:bg-gray-600', 'text-blue-600', 'dark:text-white', 'shadow');
+            bmiImperialBtn.classList.remove('bg-white', 'dark:bg-gray-600', 'text-blue-600', 'dark:text-white', 'shadow');
+        });
+
+        bmiImperialBtn.addEventListener('click', () => {
+            isMetric = false;
+            metricInputs.style.display = 'none';
+            imperialInputs.style.display = 'block';
+            bmiImperialBtn.classList.add('bg-white', 'dark:bg-gray-600', 'text-blue-600', 'dark:text-white', 'shadow');
+            bmiMetricBtn.classList.remove('bg-white', 'dark:bg-gray-600', 'text-blue-600', 'dark:text-white', 'shadow');
+        });
+
+        // Open/Close Modal
+        const toggleModal = (show) => {
+            if (show) {
+                bmiModal.classList.remove('hidden');
+                bmiModal.classList.add('flex');
+                setTimeout(() => { // For transition
+                    bmiModalContent.classList.remove('opacity-0', '-translate-y-4');
+                }, 10);
+            } else {
+                bmiModalContent.classList.add('opacity-0', '-translate-y-4');
+                setTimeout(() => {
+                    bmiModal.classList.add('hidden');
+                    bmiModal.classList.remove('flex');
+                }, 300); // Match transition duration
+            }
+        };
+
+        openBmiModalBtn.addEventListener('click', () => toggleModal(true));
+        closeBmiModalBtn.addEventListener('click', () => toggleModal(false));
+        bmiModal.addEventListener('click', (e) => {
+            if (e.target === bmiModal) toggleModal(false);
+        });
+
+        // Calculate and set BMI
+        calculateBmiBtn.addEventListener('click', () => {
+            let weight, heightMeters;
+            if (isMetric) {
+                weight = parseFloat(document.getElementById('weight_kg').value);
+                const heightCm = parseFloat(document.getElementById('height_cm').value);
+                if (weight > 0 && heightCm > 0) {
+                    heightMeters = heightCm / 100;
+                }
+            } else {
+                weight = parseFloat(document.getElementById('weight_lbs').value);
+                const heightFt = parseFloat(document.getElementById('height_ft').value) || 0;
+                const heightIn = parseFloat(document.getElementById('height_in').value) || 0;
+                const totalInches = (heightFt * 12) + heightIn;
+                if (weight > 0 && totalInches > 0) {
+                    heightMeters = totalInches * 0.0254;
+                    const bmi = (weight / (totalInches * totalInches)) * 703;
+                    bmiInput.value = bmi.toFixed(1);
+                    toggleModal(false);
+                    return; // Exit after imperial calculation
+                }
+            }
+
+            if (heightMeters > 0 && weight > 0) {
+                const bmi = weight / (heightMeters * heightMeters);
+                bmiInput.value = bmi.toFixed(1);
+                toggleModal(false);
+            } else {
+                alert('Please enter valid weight and height.');
+            }
+        });
+
+        // --- Info Modal Logic ---
+        const infoModal = document.getElementById('infoModal');
+        const infoModalContent = document.getElementById('infoModalContent');
+        const infoModalTitle = document.getElementById('infoModalTitle');
+        const infoModalBody = document.getElementById('infoModalBody');
+        const closeInfoModalBtn = document.getElementById('closeInfoModal');
+
+        const modalInfo = {
+            'Advanced Age': {
+                title: 'About Advanced Age',
+                body: `<p>The risk of stroke increases significantly with age. As you get older, your arteries can naturally become narrower and harder, and you're more likely to have conditions like high blood pressure or atrial fibrillation that increase risk.</p>
+                       <p class="font-semibold mt-4">Further Reading:</p>
+                       <ul class="list-disc list-inside text-sm">
+                           <li><a href="https://www.cdc.gov/stroke/age.htm" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">CDC - Stroke and Age</a></li>
+                       </ul>`
+            },
+            'Hypertension': {
+                title: 'About Hypertension (High Blood Pressure)',
+                body: `<p>Hypertension is the single most important risk factor for stroke. It damages arteries throughout the body, making them more likely to burst or clog. Managing blood pressure is critical for stroke prevention.</p>
+                       <p class="font-semibold mt-4">Further Reading:</p>
+                       <ul class="list-disc list-inside text-sm">
+                           <li><a href="https://www.heart.org/en/health-topics/high-blood-pressure/health-threats-from-high-blood-pressure/how-high-blood-pressure-can-lead-to-a-stroke" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">American Heart Association - High Blood Pressure and Stroke</a></li>
+                       </ul>`
+            },
+            'High BMI': {
+                title: 'About High BMI (Obesity)',
+                body: `<p>A high Body Mass Index (BMI) is linked to an increased risk of ischemic stroke. Obesity raises the chances of developing other risk factors, such as high blood pressure, high cholesterol, and diabetes.</p>
+                       <p class="font-semibold mt-4">Further Reading:</p>
+                       <ul class="list-disc list-inside text-sm">
+                           <li><a href="https://www.cdc.gov/healthyweight/assessing/bmi/index.html" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">CDC - About Adult BMI</a></li>
+                       </ul>`
+            },
+            // Add other risk factors here...
+        };
+
+        function openInfoModal(factorName) {
+            const info = modalInfo[factorName];
+            if (!info) return;
+            infoModalTitle.textContent = info.title;
+            infoModalBody.innerHTML = info.body;
+            infoModal.classList.remove('hidden');
+            infoModal.classList.add('flex');
+            setTimeout(() => infoModalContent.classList.remove('opacity-0', '-translate-y-4'), 10);
+        }
+
+        closeInfoModalBtn.addEventListener('click', () => toggleModal(false, infoModal, infoModalContent));
+        infoModal.addEventListener('click', (e) => { if (e.target === infoModal) toggleModal(false, infoModal, infoModalContent); });
+
+
+        // Use event delegation for the download button
+        document.addEventListener('click', function(event) {
+            if (event.target && event.target.id === 'download-report-btn') {
+                generatePdf();
+            }
+        });
+
+        document.getElementById('predictionForm').addEventListener('submit', function(event) {
+            // 1. Prevent the default form submission (which causes a page reload)
+            event.preventDefault();
+
+            const form = event.target;
+            const button = form.querySelector('button[type="submit"]');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+
+            // Destroy previous chart instance if it exists
+            if (riskChartInstance) {
+                riskChartInstance.destroy();
+            }
+            // Clear previous risk highlights
+            document.querySelectorAll('.risk-highlight').forEach(el => {
+                el.classList.remove('risk-highlight');
+                const parent = el.closest('div');
+                parent.classList.remove('bg-red-50', 'dark:bg-red-900/20', 'ring-2', 'ring-red-200', 'dark:ring-red-800/50', 'rounded-md');
+                parent.style.padding = '';
+            });
+
+            // 2. Show the animated spinner
+            loadingOverlay.classList.remove('hidden');
+            loadingOverlay.classList.add('flex');
+            // Disable the button to prevent multiple submissions
+            button.disabled = true;
+
+            // 3. Send form data to the server asynchronously
+            const fetchPromise = fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest' // Identify the request as AJAX
+                }
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            });
+
+            // Create a promise that resolves after a minimum delay (e.g., 1000ms = 1 second)
+            const delayPromise = new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Wait for both the fetch to complete and the minimum delay to pass
+            Promise.all([fetchPromise, delayPromise])
+            .then(([data]) => { // We only need the data from the fetchPromise
+                // 4. Dynamically create and display the result
+                const resultPlaceholder = document.getElementById('result-placeholder');
+                const isHighRisk = data.prediction.toLowerCase().includes('high'); 
+                const probability = data.probability;
+                const riskFactors = data.risk_factors;
+
+                const recommendations = {
+                    'Advanced Age': 'Regular check-ups are crucial. Discuss age-related screenings with your doctor.',
+                    'Hypertension': 'Monitor your blood pressure regularly. Focus on a low-sodium diet and consult your doctor about medication.',
+                    'Heart Disease': 'Follow your cardiologist\'s advice closely. A heart-healthy diet and appropriate exercise are key.',
+                    'High BMI': 'Consider a balanced diet and regular physical activity. Small, consistent changes can make a big difference.',
+                    'Overweight': 'Aim for a healthy weight through a balanced diet and increased physical activity to lower your risk.',
+                    'High Glucose': 'Monitor your blood sugar levels. Reduce intake of sugary foods and refined carbs, and consult a doctor.',
+                    'Smoking': 'Quitting smoking is one of the most effective ways to reduce your stroke risk. Seek support from resources like smokefree.gov.'
+                };
+
+                const getRecommendation = (factorName) => {
+                    return recommendations[factorName] || 'General healthy living is advised.';
+                };
+
+                const personalRecommendationsHtml = riskFactors.length > 0
+                    ? riskFactors.map(factor => `<li><strong>${factor.name}:</strong> ${getRecommendation(factor.name)}</li>`).join('')
+                    : '<li>Continue to maintain a healthy lifestyle, including a balanced diet and regular exercise.</li>';
+
+                const riskColor = probability < 10 ? 'green' : probability < 30 ? 'yellow' : 'red';
+                const colors = {
+                    green: { text: 'text-green-600', border: 'border-green-500', gauge: '#4ade80' },
+                    yellow: { text: 'text-yellow-600', border: 'border-yellow-500', gauge: '#facc15' },
+                    red: { text: 'text-red-600', border: 'border-red-500', gauge: '#f87171' }
+                };
+
+                let riskFactorsHtml = '<p class="text-gray-600 dark:text-gray-300">No significant risk factors identified. Keep up the healthy habits!</p>';
+                if (riskFactors.length > 0) {
+                    riskFactorsHtml = riskFactors.map(factor => `
+                        <div class="flex items-start gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mt-1 text-red-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.636-1.214 2.852-1.214 3.488 0l5.58 10.656c.636 1.214-.474 2.745-1.744 2.745H4.421c-1.27 0-2.38-1.531-1.744-2.745L8.257 3.099zM10 12a1 1 0 110-2 1 1 0 010 2zm0-5a1 1 0 00-1 1v2a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <h5 class="font-semibold text-gray-800 dark:text-gray-100">${factor.name}</h5>
+                                    ${modalInfo[factor.name] ? `<button onclick="openInfoModal('${factor.name}')" class="learn-more-link font-semibold text-blue-600 dark:text-blue-500 hover:underline">Learn More</button>` : ''}
+                                </div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Your value: ${factor.value}</p>                                
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // Create the result HTML
+                resultPlaceholder.innerHTML = `
+                    <div id="report-content">
+                        <!-- Main Result Card -->
+                        <div id="result-container" class="result mt-6 p-6 rounded-xl bg-white dark:bg-gray-800 shadow-lg border ${colors[riskColor].border} dark:border-gray-700 animate-fadeIn">
+                            <div class="flex flex-col sm:flex-row items-center text-center sm:text-left gap-6">
+                                <!-- Gauge Chart -->
+                                <div class="relative flex-shrink-0 w-[150px] h-[75px]">
+                                    <div class="gauge-container">
+                                        <div class="gauge-bg"></div>
+                                        <div id="gauge-fill" class="gauge-fill"></div>
+                                        <div class="absolute inset-0 flex items-end justify-center">
+                                            <div class="gauge-cover"></div>
+                                        </div>
+                                    </div>
+                                    <div class="absolute inset-0 flex flex-col items-center justify-end pb-1">
+                                        <span class="text-3xl font-bold ${colors[riskColor].text} leading-none">${probability}%</span>
+                                        <span class="block text-xs text-gray-500 dark:text-gray-400 -mt-1">Risk</span>
+                                    </div>
+                                </div>
+                                <!-- Result Text -->
+                                <div class="flex-grow">
+                                    <h3 class="text-xl font-semibold text-gray-800 dark:text-gray-100">Assessment Result</h3>
+                                    <p class="text-2xl font-bold ${colors[riskColor].text}">
+                                        ${data.prediction}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Details Grid -->
+                        <div class="mt-6 grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fadeIn" style="animation-delay: 200ms;">
+                            <!-- Top Risk Factors -->
+                            <div id="factors-container" class="lg:col-span-2 p-6 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-100 mb-4">Key Contributing Factors</h4>
+                                <div class="space-y-4">
+                                    ${riskFactorsHtml}
+                                </div>
+                            </div>
+                            <!-- Radar Chart & Recommendations -->
+                            <div class="lg:col-span-3 p-6 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-100 mb-2">Health Metrics Overview</h4>
+                                        <div class="relative h-48 sm:h-full">
+                                            <canvas id="riskChart"></canvas>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-100 mb-2">Personalized Recommendations</h4>
+                                        <ul class="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                                            ${personalRecommendationsHtml}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- What-If Analysis -->
+                            <div id="what-if-container" class="hidden lg:col-span-5 p-6 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-fadeIn" style="animation-delay: 300ms;">
+                                <h4 class="font-semibold text-lg text-gray-800 dark:text-gray-100 mb-4">"What-If" Analysis</h4>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">See how changing key factors could impact your risk. Toggle an option to see the potential new risk probability.</p>
+                                <div id="what-if-controls" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                    <!-- Controls will be dynamically inserted here -->
+                                </div>
+                                <div id="what-if-reset-container" class="hidden mt-4">
+                                     <button id="what-if-reset-btn" class="text-xs font-semibold text-blue-600 dark:text-blue-500 hover:underline">
+                                        Reset to Original Prediction
+                                    </button>
+                                </div>
+                                <div id="what-if-original-prob" class="hidden mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                    Original Risk: <span class="font-bold"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-6 text-center animate-fadeIn" style="animation-delay: 400ms;">
+                        <button id="download-report-btn" class="inline-flex items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                            Download Report
+                        </button>
+                    </div>
+                `;
+
+                // 5. Scroll the result into view
+                const resultContainer = document.getElementById('result-container');
+                resultContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Render the chart
+                renderRiskChart(new FormData(form));
+
+                // Set up and show the What-If analysis
+                setupWhatIfAnalysis(form, data);
+
+
+                // Animate the gauge
+                const gaugeFill = document.getElementById('gauge-fill');
+                if (gaugeFill) {
+                    gaugeFill.style.borderColor = colors[riskColor].gauge;
+                    setTimeout(() => gaugeFill.style.transform = `rotate(${(probability / 100) * 180}deg)`, 100);
+                }
+
+                // 6. Highlight risk factors if high risk
+                if (isHighRisk) {
+                    const riskFactors = {
+                        'age': 60,
+                        'avg_glucose_level': 126,
+                        'bmi': 30,
+                        'hypertension': '1',
+                        'heart_disease': '1'
+                    };
+
+                    for (const [id, threshold] of Object.entries(riskFactors)) {
+                        const input = document.getElementById(id);
+                        const value = (input.type === 'number') ? parseFloat(input.value) : input.value;
+                        if ((input.type === 'number' && value >= threshold) || (input.tagName === 'SELECT' && value === threshold)) {
+                            input.classList.add('risk-highlight');
+                            const parentDiv = input.closest('div');
+                            parentDiv.classList.add('bg-red-50', 'dark:bg-red-900/20', 'ring-2', 'ring-red-200', 'dark:ring-red-800/50', 'rounded-md');
+                            parentDiv.style.padding = '0.5rem';
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                const resultPlaceholder = document.getElementById('result-placeholder');
+                resultPlaceholder.innerHTML = ` 
+                    <div class="mt-6 p-4 text-center rounded-lg bg-red-50 border border-red-200 text-red-700 animate-fadeIn" role="alert">
+                        <strong class="font-bold">An error occurred.</strong>
+                        <span class="block sm:inline">Please check your connection and try again.</span>
+                    </div>
+                `;
+            })
+            .finally(() => {
+                // 6. Hide spinner and re-enable the button
+                loadingOverlay.classList.add('hidden');
+                button.disabled = false;
+            });
+        });
+
+        // Handle form reset
+        document.querySelector('button[type="reset"]').addEventListener('click', function() {
+            // Clear the dynamic result area
+            document.getElementById('result-placeholder').innerHTML = '';
+            // Destroy the chart if it exists
+            if (riskChartInstance) riskChartInstance.destroy();
+            // Clear risk highlights on reset
+            document.querySelectorAll('.risk-highlight').forEach(el => {
+                el.classList.remove('risk-highlight');
+                const parent = el.closest('div');
+                parent.classList.remove('bg-red-50', 'dark:bg-red-900/20', 'ring-2', 'ring-red-200', 'dark:ring-red-800/50', 'rounded-md');
+                parent.style.padding = '';
+            });
+        });
+
+        // --- What-If Analysis Logic ---
+        function setupWhatIfAnalysis(originalForm, originalData) {
+            const container = document.getElementById('what-if-container');
+            const controlsContainer = document.getElementById('what-if-controls');
+            const originalProbEl = document.getElementById('what-if-original-prob').querySelector('span');
+            const whatIfResetContainer = document.getElementById('what-if-reset-container');
+            const whatIfResetBtn = document.getElementById('what-if-reset-btn');
+
+            controlsContainer.innerHTML = ''; // Clear previous controls
+
+            const originalFormData = new FormData(originalForm);
+            const currentBmi = parseFloat(originalFormData.get('bmi'));
+            const currentSmoking = originalFormData.get('smoking_status');
+            const currentHypertension = originalFormData.get('hypertension');
+
+            const scenarios = [];
+
+            // Scenario 1: Achieve Healthy BMI
+            if (currentBmi > 25) {
+                scenarios.push({
+                    id: 'whatif-bmi',
+                    label: 'Achieve Healthy BMI (24.9)',
+                    field: 'bmi',
+                    value: 24.9
+                });
+            }
+
+            // Scenario 2: Stop Smoking
+            if (currentSmoking === 'smokes') {
+                 scenarios.push({
+                    id: 'whatif-smoking',
+                    label: 'Stop Smoking',
+                    field: 'smoking_status',
+                    value: 'never smoked'
+                });
+            }
+
+            // Scenario 3: Manage Hypertension
+            if (currentHypertension === '1') {
+                 scenarios.push({
+                    id: 'whatif-hypertension',
+                    label: 'Manage Hypertension',
+                    field: 'hypertension',
+                    value: '0'
+                });
+            }
+
+            if (scenarios.length === 0) {
+                container.classList.add('hidden');
+                return; // No relevant scenarios to show
+            }
+
+            // Create controls
+            scenarios.forEach(scenario => {
+                const controlHtml = `
+                    <label for="${scenario.id}" class="flex items-center p-3 bg-white dark:bg-gray-700/50 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors">
+                        <input type="checkbox" id="${scenario.id}" data-field="${scenario.field}" data-value="${scenario.value}" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">${scenario.label}</span>
+                    </label>
+                `;
+                controlsContainer.insertAdjacentHTML('beforeend', controlHtml);
+            });
+
+            container.classList.remove('hidden');
+            originalProbEl.textContent = `${originalData.probability}%`;
+
+            // Function to update prediction based on "What-If" toggles
+            const updateWhatIfPrediction = () => {
+                const whatIfFormData = new FormData(originalForm);
+                let scenarioActive = false;
+                document.querySelectorAll('#what-if-controls input[type="checkbox"]:checked').forEach(checkbox => {
+                    whatIfFormData.set(checkbox.dataset.field, checkbox.dataset.value);
+                    scenarioActive = true;
+                });
+
+                // Show reset button only when a scenario is active
+                whatIfResetContainer.classList.toggle('hidden', !scenarioActive);
+                document.getElementById('what-if-original-prob').classList.toggle('hidden', !scenarioActive);
+
+                // If no scenarios are active, revert to original data
+                if (!scenarioActive) {
+                    updateResultUI(originalData.probability);
+                    return;
+                }
+
+                // Fetch new prediction with modified data
+                fetch(originalForm.action, {
+                    method: 'POST',
+                    body: whatIfFormData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(res => res.json())
+                .then(newData => {
+                    updateResultUI(newData.probability);
+                });
+            };
+
+            // Add event listeners to new checkboxes
+            controlsContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', updateWhatIfPrediction);
+            });
+
+            // Reset button logic
+            whatIfResetBtn.addEventListener('click', () => {
+                controlsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                updateWhatIfPrediction();
+            });
+        }
+
+        function updateResultUI(probability) {
+            const probText = document.querySelector('#result-container .text-3xl');
+            const gaugeFill = document.getElementById('gauge-fill');
+            probText.textContent = `${probability}%`;
+            gaugeFill.style.transform = `rotate(${(probability / 100) * 180}deg)`;
+        }
+    </script>
+    <script>
+        async function generatePdf() {
+            const reportContent = document.getElementById('report-content');
+            const downloadBtn = document.getElementById('download-report-btn');
+            const name = document.getElementById('name').value || 'Anonymous';
+            const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            // Temporarily hide the button and force a light theme for capture
+            downloadBtn.style.visibility = 'hidden';
+            reportContent.classList.add('pdf-capture');
+
+            const canvas = await html2canvas(reportContent, {
+                scale: 2, // Higher scale for better quality
+                useCORS: true,
+                backgroundColor: '#ffffff' // Force white background
+            });
+
+            // Restore visibility
+            downloadBtn.style.visibility = 'visible';
+            reportContent.classList.remove('pdf-capture');
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const imgWidth = pdfWidth - 20; // with margin
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+            // Add Header
+            pdf.setFont('Poppins', 'bold');
+            pdf.setFontSize(20);
+            pdf.text('StrokeShield Risk Assessment Report', pdfWidth / 2, 15, { align: 'center' });
+            
+            pdf.setFont('Poppins', 'normal');
+            pdf.setFontSize(12);
+            pdf.text(`For: ${name}`, 10, 25);
+            pdf.text(`Date: ${date}`, pdfWidth - 10, 25, { align: 'right' });
+
+            pdf.addImage(imgData, 'PNG', 10, 35, imgWidth, imgHeight);
+            pdf.save(`StrokeShield-Report-${name.replace(/\s/g, '_')}.pdf`);
+        }
+
+        function renderRiskChart(formData) {
+            const ctx = document.getElementById('riskChart').getContext('2d');
+            
+            const isDarkMode = document.documentElement.classList.contains('dark');
+            const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+            const pointColor = isDarkMode ? '#9ca3af' : '#4b5563'; // gray-400 / gray-600
+            const fontColor = isDarkMode ? '#d1d5db' : '#374151'; // gray-300 / gray-700
+
+            // Normalize data for charting. We map each value to a 0-100 scale.
+            const normalize = (value, min, max) => Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+
+            const age = parseFloat(formData.get('age'));
+            const bmi = parseFloat(formData.get('bmi'));
+            const glucose = parseFloat(formData.get('avg_glucose_level'));
+
+            const userData = [
+                normalize(age, 20, 80),      // Age: 20 (ideal) to 80 (high)
+                normalize(bmi, 18.5, 35),    // BMI: 18.5 (ideal) to 35 (high)
+                normalize(glucose, 70, 180)  // Glucose: 70 (ideal) to 180 (high)
+            ];
+
+            riskChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Age', 'BMI', 'Avg. Glucose'],
+                    datasets: [{
+                        label: 'Your Profile',
+                        data: userData,
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(59, 130, 246, 1)'
+                    },
+                    {
+                        label: 'High-Risk Threshold',
+                        data: [66, 75, 60], // Normalized values for Age:60, BMI:30, Glucose:126
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 1,
+                        pointBackgroundColor: 'rgba(239, 68, 68, 1)',
+                        borderDash: [5, 5]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            angleLines: { color: gridColor },
+                            grid: { color: gridColor },
+                            pointLabels: { color: fontColor, font: { size: 12, family: 'Poppins' }, padding: 15 },
+                            ticks: {
+                                backdropColor: 'transparent',
+                                showLabelBackdrop: true,
+                                backdropColor: isDarkMode ? 'rgba(31, 41, 55, 0.75)' : 'rgba(243, 244, 246, 0.75)', // gray-800 or gray-100
+                                color: fontColor,
+                                stepSize: 25,
+                                callback: function(value) { return value + '%' }
+                            },
+                            min: 0,
+                            max: 100
+                        }
+                    },
+                    plugins: { legend: { labels: { color: fontColor } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
